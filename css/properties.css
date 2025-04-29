@@ -1,0 +1,447 @@
+/* Properties Page Styles */
+
+/* Properties Header */
+.properties-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.properties-header h1 {
+    font-size: 2rem;
+    margin: 0;
+}
+
+.properties-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Filters Section */
+.filters-section {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.search-box {
+    display: flex;
+    margin-bottom: 1.5rem;
+}
+
+.search-box input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px 0 0 4px;
+    font-size: 1rem;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.search-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0 1.5rem;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+}
+
+.filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.filter-group select {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+    background-color: white;
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* Properties List */
+.properties-list {
+    margin-bottom: 2rem;
+}
+
+.properties-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.property-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.property-card-image {
+    position: relative;
+    height: 200px;
+    overflow: hidden;
+}
+
+.property-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.property-card:hover .property-card-image img {
+    transform: scale(1.05);
+}
+
+.property-card-status {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: white;
+    z-index: 1;
+}
+
+.property-card-status.occupied {
+    background-color: var(--success-color);
+}
+
+.property-card-status.vacant {
+    background-color: var(--warning-color);
+}
+
+.property-card-status.maintenance {
+    background-color: var(--danger-color);
+}
+
+.property-card-content {
+    padding: 1.5rem;
+}
+
+.property-card-title {
+    font-size: 1.2rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.property-card-location {
+    color: var(--text-secondary);
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.property-card-price {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin: 0 0 1rem 0;
+}
+
+.property-card-features {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.property-card-feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.feature-icon {
+    color: var(--text-secondary);
+}
+
+.feature-value {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.property-card-actions {
+    display: flex;
+    justify-content: space-between;
+}
+
+.property-card-actions button {
+    flex: 1;
+    margin: 0 0.25rem;
+}
+
+/* Pagination */
+.properties-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+}
+
+.pagination-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.pagination-btn:hover {
+    background-color: var(--background-light);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.pagination-info {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+/* Property Details Modal */
+.property-details-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.property-image-large {
+    height: 300px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.property-image-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.property-info h3 {
+    font-size: 1.5rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.property-info .property-location {
+    color: var(--text-secondary);
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.property-info .property-price {
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.property-info .property-status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: white;
+    margin-bottom: 1rem;
+}
+
+.property-info .property-status.occupied {
+    background-color: var(--success-color);
+}
+
+.property-info .property-status.vacant {
+    background-color: var(--warning-color);
+}
+
+.property-info .property-status.maintenance {
+    background-color: var(--danger-color);
+}
+
+.property-description, .property-amenities, .property-tenant {
+    margin-bottom: 1.5rem;
+}
+
+.property-description h4, .property-amenities h4, .property-tenant h4 {
+    font-size: 1.1rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.property-description p {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.property-amenities ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.property-amenities li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.property-amenities li i {
+    color: var(--primary-color);
+}
+
+.property-tenant {
+    background-color: var(--background-light);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.property-tenant-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.tenant-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.tenant-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.tenant-details h5 {
+    margin: 0 0 0.25rem 0;
+}
+
+.tenant-details p {
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.tenant-contact {
+    display: flex;
+    gap: 1rem;
+}
+
+.tenant-contact a {
+    color: var(--primary-color);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tenant-contact a:hover {
+    text-decoration: underline;
+}
+
+.property-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+    .property-details-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .property-image-large {
+        height: 250px;
+    }
+}
+
+@media (max-width: 768px) {
+    .properties-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .properties-actions {
+        width: 100%;
+    }
+    
+    .properties-actions button {
+        flex: 1;
+    }
+    
+    .filters {
+        grid-template-columns: 1fr;
+    }
+    
+    .property-card-features {
+        flex-wrap: wrap;
+    }
+    
+    .property-card-feature {
+        width: 50%;
+    }
+}
+
+@media (max-width: 576px) {
+    .property-card-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .property-card-actions button {
+        margin: 0;
+    }
+    
+    .property-amenities ul {
+        grid-template-columns: 1fr;
+    }
+} 
