@@ -389,7 +389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <header class="header">
         <div class="container">
             <div class="logo">
-                <a href="index.html">
+                <a href="index.php">
                     <i class="fas fa-building" aria-hidden="true"></i>
                     <span>Tenant</span>Portal <span class="admin-highlight">Admin</span>
                 </a>

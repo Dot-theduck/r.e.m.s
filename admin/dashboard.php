@@ -1,11 +1,7 @@
 <?php
-require_once '../../rems/tenant/config.php';
+require_once '../tenant/config.php';
 
-// Check if user is logged in (you can implement your authentication logic here)
-// if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
-//     header('Location: login.php');
-//     exit();
-// }
+
 
 // 1. Total Properties
 $propertyCount = 0;
@@ -38,10 +34,11 @@ if ($result) {
 // 5. Recent Payments
 $recentPayments = [];
 $result = $mysqli->query("
-    SELECT p.id, p.amount, p.payment_date, p.payment_method, t.first_name, t.last_name, prop.property_name
+    SELECT p.id, p.amount, p.payment_date, p.payment_method, t.first_name, t.last_name, prop.title as property_name
     FROM payment p
-    JOIN tenants t ON p.tenant_id = t.id
+    JOIN users t ON p.tenant_id = t.id
     JOIN properties prop ON p.property_id = prop.id
+    WHERE t.user_type = 'tenant'
     ORDER BY p.payment_date DESC
     LIMIT 5
 ");
@@ -54,21 +51,20 @@ if ($result) {
 // 6. Properties with Vacancies
 $vacantProperties = [];
 $result = $mysqli->query("
-    SELECT id, property_name, address, units, 
-           (units - (SELECT COUNT(*) FROM tenant_properties WHERE property_id = properties.id AND status = 'active')) AS vacant_units
+    SELECT id, title as property_name, address, 
+           (SELECT COUNT(*) FROM tenant_properties WHERE property_id = properties.id AND status = 'active') AS occupied_units,
+           bedrooms + bathrooms AS total_units
     FROM properties
-    HAVING vacant_units > 0
-    ORDER BY vacant_units DESC
+    HAVING total_units > occupied_units
+    ORDER BY (total_units - occupied_units) DESC
     LIMIT 5
 ");
 if ($result) {
     while ($row = $result->fetch_assoc()) {
+        $row['vacant_units'] = $row['total_units'] - $row['occupied_units'];
         $vacantProperties[] = $row;
     }
 }
-
-// Get current page for sidebar active state
-$currentPage = basename($_SERVER['PHP_SELF']);
 ?>
 
 <!DOCTYPE html>
@@ -76,340 +72,339 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>REMS - Admin Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Dashboard | REMS</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Base Styles */
         :root {
-            --primary: #4e73df;
-            --secondary: #858796;
-            --success: #1cc88a;
-            --info: #36b9cc;
-            --warning: #f6c23e;
-            --danger: #e74a3b;
-            --light: #f8f9fc;
-            --dark: #5a5c69;
-            --sidebar-width: 250px;
-            --sidebar-width-collapsed: 70px;
-            --topbar-height: 70px;
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --primary-light: #93c5fd;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --light: #f8fafc;
+            --dark: #1e293b;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+            --agent-primary: #6366f1;
+            --agent-primary-dark: #4f46e5;
+            --agent-primary-light: #a5b4fc;
+            --agent-secondary: #8b5cf6;
+            --border-radius: 0.5rem;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f8f9fc;
-            overflow-x: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            color: var(--gray-800);
+            background-color: var(--gray-100);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        
+
+        .agent-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
         /* Sidebar Styles */
         .sidebar {
+            width: 260px;
+            background-color: white;
+            border-right: 1px solid var(--gray-200);
             position: fixed;
             top: 0;
             left: 0;
             bottom: 0;
-            width: var(--sidebar-width);
-            background: linear-gradient(180deg, #4e73df 10%, #224abe 100%);
-            color: rgba(255, 255, 255, 0.8);
-            z-index: 1000;
-            transition: all 0.3s;
-            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            z-index: 50;
             overflow-y: auto;
+            transition: transform 0.3s ease;
         }
-        
-        .sidebar.collapsed {
-            width: var(--sidebar-width-collapsed);
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0 !important;
+            }
         }
-        
-        .sidebar-brand {
-            height: var(--topbar-height);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem 1rem;
-            font-size: 1.25rem;
-            font-weight: 800;
-            color: white;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.05rem;
-            background: rgba(0, 0, 0, 0.1);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .sidebar-brand-icon {
-            margin-right: 0.5rem;
-        }
-        
-        .sidebar.collapsed .sidebar-brand-text {
-            display: none;
-        }
-        
-        .sidebar-divider {
-            border-top: 1px solid rgba(255, 255, 255, 0.15);
-            margin: 0 1rem 1rem;
-        }
-        
-        .sidebar-heading {
-            color: rgba(255, 255, 255, 0.4);
-            font-size: 0.75rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.13rem;
-            padding: 0 1rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .sidebar.collapsed .sidebar-heading {
-            display: none;
-        }
-        
-        .nav-item {
-            position: relative;
-            margin-bottom: 0.25rem;
-        }
-        
-        .nav-link {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem 1rem;
-            color: rgba(255, 255, 255, 0.8);
-            font-weight: 700;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-        }
-        
-        .nav-link:hover {
-            color: white;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .nav-link.active {
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-            font-weight: 700;
-        }
-        
-        .nav-link i {
-            font-size: 1rem;
-            margin-right: 0.75rem;
-            color: rgba(255, 255, 255, 0.3);
-            transition: all 0.2s;
-            width: 1.5rem;
-            text-align: center;
-        }
-        
-        .nav-link:hover i, .nav-link.active i {
-            color: white;
-        }
-        
-        .sidebar.collapsed .nav-link-text {
-            display: none;
-        }
-        
-        .sidebar-toggle {
-            position: absolute;
-            right: -1rem;
-            top: calc(var(--topbar-height) / 2);
-            height: 2rem;
-            width: 2rem;
-            background-color: #4e73df;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
-            z-index: 1001;
-            transition: all 0.3s;
-        }
-        
-        .sidebar-toggle:hover {
-            background-color: #224abe;
-        }
-        
-        /* Content Wrapper */
-        .content-wrapper {
-            margin-left: var(--sidebar-width);
+
+        .sidebar-header {
             padding: 1.5rem;
-            transition: all 0.3s;
-            min-height: 100vh;
-        }
-        
-        .content-wrapper.expanded {
-            margin-left: var(--sidebar-width-collapsed);
-        }
-        
-        /* Topbar */
-        .topbar {
-            height: var(--topbar-height);
-            background-color: white;
-            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            border-bottom: 1px solid var(--gray-200);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 1.5rem;
-            margin-bottom: 1.5rem;
-            border-radius: 0.35rem;
         }
-        
-        .topbar-divider {
-            width: 0;
-            border-right: 1px solid #e3e6f0;
-            height: calc(var(--topbar-height) - 2rem);
-            margin: auto 1rem;
-        }
-        
-        .user-profile {
+
+        .sidebar-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--agent-primary);
             display: flex;
             align-items: center;
+            gap: 0.5rem;
         }
-        
-        .user-profile img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            margin-right: 0.5rem;
-            border: 2px solid #4e73df;
+
+        .sidebar-nav {
+            padding: 1.5rem 0;
         }
-        
-        .user-info {
+
+        .sidebar-nav-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-nav-link {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            color: var(--gray-600);
+            text-decoration: none;
+            transition: all 0.2s;
+            border-radius: 0.25rem;
+            margin: 0 0.5rem;
         }
-        
-        .user-name {
-            font-weight: 700;
-            font-size: 0.85rem;
-            color: #5a5c69;
+
+        .sidebar-nav-link:hover {
+            background-color: var(--gray-100);
+            color: var(--gray-800);
         }
-        
-        .user-role {
-            font-size: 0.75rem;
-            color: #858796;
+
+        .sidebar-nav-link.active {
+            background-color: var(--agent-primary-light);
+            color: var(--agent-primary-dark);
+            font-weight: 500;
         }
-        
-        /* Dashboard Cards */
-        .dashboard-cards {
+
+        .sidebar-nav-icon {
+            margin-right: 0.75rem;
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 2rem;
+            transition: margin-left 0.3s ease;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .page-title {
+            font-size: 1.875rem;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 1.5rem;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
-        
-        .card {
-            border: none;
-            border-radius: 0.35rem;
-            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 0.5rem 2rem 0 rgba(58, 59, 69, 0.25);
-        }
-        
-        .card-stat {
-            position: relative;
+
+        .stat-card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
             padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
             overflow: hidden;
-            border-left: 0.25rem solid;
+            border-left: 4px solid;
         }
-        
-        .card-stat.primary {
-            border-left-color: var(--primary);
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
         }
-        
-        .card-stat.success {
+
+        .stat-card.primary {
+            border-left-color: var(--agent-primary);
+        }
+
+        .stat-card.success {
             border-left-color: var(--success);
         }
-        
-        .card-stat.info {
-            border-left-color: var(--info);
+
+        .stat-card.info {
+            border-left-color: var(--primary);
         }
-        
-        .card-stat.warning {
+
+        .stat-card.warning {
             border-left-color: var(--warning);
         }
-        
-        .card-stat-title {
+
+        .stat-title {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 0.5rem;
             text-transform: uppercase;
-            font-size: 0.7rem;
-            font-weight: 700;
-            color: var(--secondary);
-            margin-bottom: 0.25rem;
-            letter-spacing: 0.1rem;
+            letter-spacing: 0.05rem;
+            font-weight: 600;
         }
-        
-        .card-stat-value {
+
+        .stat-value {
             font-size: 1.5rem;
             font-weight: 700;
-            color: var(--dark);
-            margin-bottom: 0;
+            color: var(--gray-800);
         }
-        
-        .card-stat-icon {
+
+        .stat-icon {
             position: absolute;
             top: 1rem;
             right: 1rem;
             font-size: 2rem;
-            opacity: 0.3;
+            opacity: 0.2;
         }
-        
-        .card-stat.primary .card-stat-icon {
-            color: var(--primary);
+
+        .stat-card.primary .stat-icon {
+            color: var(--agent-primary);
         }
-        
-        .card-stat.success .card-stat-icon {
+
+        .stat-card.success .stat-icon {
             color: var(--success);
         }
-        
-        .card-stat.info .card-stat-icon {
-            color: var(--info);
+
+        .stat-card.info .stat-icon {
+            color: var(--primary);
         }
-        
-        .card-stat.warning .card-stat-icon {
+
+        .stat-card.warning .stat-icon {
             color: var(--warning);
         }
-        
-        /* Tables */
-        .table-card {
+
+        /* Card Styles */
+        .card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
             margin-bottom: 1.5rem;
         }
-        
-        .table-card .card-header {
-            background-color: #f8f9fc;
-            border-bottom: 1px solid #e3e6f0;
-            font-weight: 700;
-            color: var(--dark);
+
+        .card-header {
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--gray-200);
+            background-color: var(--agent-primary-light);
         }
-        
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--agent-primary-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* Table Styles */
         .table-responsive {
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
-        
+
         .table {
-            margin-bottom: 0;
+            width: 100%;
+            border-collapse: collapse;
         }
-        
-        .table th {
-            background-color: #f8f9fc;
-            font-weight: 700;
-            color: var(--dark);
-            border-top: none;
-        }
-        
+
+        .table th,
         .table td {
-            vertical-align: middle;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--gray-200);
         }
-        
-        .badge-vacant {
-            background-color: var(--danger);
-            color: white;
+
+        .table th {
+            text-align: left;
             font-weight: 600;
-            padding: 0.35rem 0.65rem;
-            border-radius: 10rem;
+            color: var(--gray-700);
+            background-color: var(--gray-100);
         }
-        
+
+        .table tbody tr:hover {
+            background-color: var(--gray-50);
+        }
+
+        /* Badge Styles */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background-color: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background-color: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .badge-danger {
+            background-color: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .badge-primary {
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
+        }
+
+        /* Payment Method Styles */
         .payment-method {
             display: inline-flex;
             align-items: center;
@@ -418,231 +413,255 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             font-size: 0.75rem;
             font-weight: 600;
         }
-        
+
         .payment-method.cash {
-            background-color: rgba(28, 200, 138, 0.1);
+            background-color: var(--success-light);
             color: var(--success);
         }
-        
+
         .payment-method.card {
-            background-color: rgba(78, 115, 223, 0.1);
-            color: var(--primary);
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
         }
-        
+
         .payment-method.bank {
-            background-color: rgba(54, 185, 204, 0.1);
-            color: var(--info);
+            background-color: var(--agent-primary-light);
+            color: var(--agent-primary-dark);
         }
-        
+
         .payment-method i {
             margin-right: 0.25rem;
         }
-        
-        /* Responsive */
+
+        /* Button Styles */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.625rem 1.25rem;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            border: none;
+            font-size: 0.875rem;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--agent-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--agent-primary-dark);
+        }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        /* User Profile */
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .user-avatar {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--agent-primary-light);
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: var(--gray-800);
+            font-size: 0.875rem;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+        }
+
+        /* Mobile menu toggle */
+        .mobile-menu-toggle {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            background-color: var(--agent-primary);
+            color: white;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+        }
+
         @media (max-width: 768px) {
-            .sidebar {
-                width: 0;
-                box-shadow: none;
+            .mobile-menu-toggle {
+                display: flex;
             }
             
-            .sidebar.mobile-show {
-                width: var(--sidebar-width);
-                box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .dashboard-row {
+                flex-direction: column;
             }
             
-            .content-wrapper {
-                margin-left: 0;
+            .dashboard-col {
+                width: 100% !important;
             }
-            
-            .content-wrapper.expanded {
-                margin-left: 0;
+        }
+
+        @media (max-width: 576px) {
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
             }
-            
-            .sidebar-toggle {
-                right: auto;
-                left: 1rem;
-                top: 1rem;
-            }
-            
-            .mobile-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: rgba(0, 0, 0, 0.5);
-                z-index: 999;
-                display: none;
-            }
-            
-            .mobile-overlay.show {
-                display: block;
-            }
+        }
+
+        .dashboard-row {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 -0.75rem;
+        }
+
+        .dashboard-col {
+            padding: 0 0.75rem;
+            width: 50%;
         }
     </style>
 </head>
 <body>
+<div class="agent-layout">
     <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-            <div class="sidebar-brand-icon">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
                 <i class="fas fa-building"></i>
+                <span>REMS ADMIN</span>
             </div>
-            <div class="sidebar-brand-text">REMS Admin</div>
         </div>
-        
-        <hr class="sidebar-divider">
-        
-        <div class="sidebar-heading">Core</div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="dashboard.php">
-                <i class="fas fa-fw fa-tachometer-alt"></i>
-                <span class="nav-link-text">Dashboard</span>
-            </a>
-        </div>
-        
-        <hr class="sidebar-divider">
-        
-        <div class="sidebar-heading">Management</div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'landlord_management.php' ? 'active' : ''; ?>" href="landlord_management.php">
-                <i class="fas fa-fw fa-user-tie"></i>
-                <span class="nav-link-text">Landlord Management</span>
-            </a>
-        </div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'agent_management.php' ? 'active' : ''; ?>" href="agent_management.php">
-                <i class="fas fa-fw fa-user-tag"></i>
-                <span class="nav-link-text">Agent Management</span>
-            </a>
-        </div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'tenant_management.php' ? 'active' : ''; ?>" href="tenant_management.php">
-                <i class="fas fa-fw fa-users"></i>
-                <span class="nav-link-text">Tenant Management</span>
-            </a>
-        </div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'properties.php' ? 'active' : ''; ?>" href="properties.php">
-                <i class="fas fa-fw fa-home"></i>
-                <span class="nav-link-text">Properties</span>
-            </a>
-        </div>
-        
-        <hr class="sidebar-divider">
-        
-        <div class="sidebar-heading">Finance</div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'payments.php' ? 'active' : ''; ?>" href="payments.php">
-                <i class="fas fa-fw fa-money-bill-wave"></i>
-                <span class="nav-link-text">Payments</span>
-            </a>
-        </div>
-        
-        <div class="nav-item">
-            <a class="nav-link <?php echo $currentPage === 'reports.php' ? 'active' : ''; ?>" href="reports.php">
-                <i class="fas fa-fw fa-chart-bar"></i>
-                <span class="nav-link-text">Reports</span>
-            </a>
-        </div>
-        
-        <hr class="sidebar-divider">
-        
-        <div class="sidebar-heading">Account</div>
-        
-        <div class="nav-item">
-            <a class="nav-link" href="logout.php">
-                <i class="fas fa-fw fa-sign-out-alt"></i>
-                <span class="nav-link-text">Logout</span>
-            </a>
-        </div>
-        
-        <div class="sidebar-toggle" id="sidebarToggle">
-            <i class="fas fa-chevron-left"></i>
-        </div>
-    </div>
-    
-    <!-- Mobile Overlay -->
-    <div class="mobile-overlay" id="mobileOverlay"></div>
-    
-    <!-- Content Wrapper -->
-    <div class="content-wrapper" id="contentWrapper">
-        <!-- Topbar -->
-        <div class="topbar">
-            <div>
-                <button class="btn btn-link d-md-none" id="mobileToggle">
-                    <i class="fas fa-bars"></i>
-                </button>
-                <h1 class="h3 mb-0 text-gray-800 d-none d-sm-inline-block">Dashboard</h1>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-item">
+                <a href="dashboard.php" class="sidebar-nav-link active">
+                    <i class="fas fa-tachometer-alt sidebar-nav-icon"></i>
+                    Dashboard
+                </a>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="properties.php" class="sidebar-nav-link">
+                    <i class="fas fa-building sidebar-nav-icon"></i>
+                    Properties
+                </a>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="tenants.php" class="sidebar-nav-link">
+                    <i class="fas fa-users sidebar-nav-icon"></i>
+                    Tenants
+                </a>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="payment.php" class="sidebar-nav-link">
+                    <i class="fas fa-money-bill-wave sidebar-nav-icon"></i>
+                    Payments
+                </a>
             </div>
             
+            <div class="sidebar-nav-item">
+                <a href="../index.php" class="sidebar-nav-link">
+                    <i class="fas fa-sign-out-alt sidebar-nav-icon"></i>
+                    Logout
+                </a>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Dashboard</h1>
             <div class="user-profile">
-                <img src="https://ui-avatars.com/api/?name=Admin+User&background=4e73df&color=fff" alt="Admin User">
+                <img src="https://ui-avatars.com/api/?name=Admin+User&background=6366f1&color=fff" alt="Admin User" class="user-avatar">
                 <div class="user-info">
                     <div class="user-name">Admin User</div>
                     <div class="user-role">Administrator</div>
                 </div>
             </div>
         </div>
-        
-        <!-- Dashboard Content -->
-        <div class="dashboard-cards">
-            <div class="card card-stat primary">
-                <div class="card-stat-title">Total Properties</div>
-                <div class="card-stat-value"><?= $propertyCount ?></div>
-                <div class="card-stat-icon">
-                    <i class="fas fa-home"></i>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card primary">
+                <div class="stat-title">Total Properties</div>
+                <div class="stat-value"><?= $propertyCount ?></div>
+                <div class="stat-icon">
+                    <i class="fas fa-building"></i>
                 </div>
             </div>
             
-            <div class="card card-stat success">
-                <div class="card-stat-title">Total Payments</div>
-                <div class="card-stat-value">$<?= number_format($totalPayments, 2) ?></div>
-                <div class="card-stat-icon">
+            <div class="stat-card success">
+                <div class="stat-title">Total Payments</div>
+                <div class="stat-value">$<?= number_format($totalPayments, 2) ?></div>
+                <div class="stat-icon">
                     <i class="fas fa-dollar-sign"></i>
                 </div>
             </div>
             
-            <div class="card card-stat info">
-                <div class="card-stat-title">Active Leases</div>
-                <div class="card-stat-value"><?= $activeLeases ?></div>
-                <div class="card-stat-icon">
+            <div class="stat-card info">
+                <div class="stat-title">Active Leases</div>
+                <div class="stat-value"><?= $activeLeases ?></div>
+                <div class="stat-icon">
                     <i class="fas fa-file-contract"></i>
                 </div>
             </div>
             
-            <div class="card card-stat warning">
-                <div class="card-stat-title">Total Tenants</div>
-                <div class="card-stat-value"><?= $totalTenants ?></div>
-                <div class="card-stat-icon">
+            <div class="stat-card warning">
+                <div class="stat-title">Total Tenants</div>
+                <div class="stat-value"><?= $totalTenants ?></div>
+                <div class="stat-icon">
                     <i class="fas fa-users"></i>
                 </div>
             </div>
         </div>
-        
-        <div class="row">
+
+        <!-- Dashboard Tables -->
+        <div class="dashboard-row">
             <!-- Recent Payments Table -->
-            <div class="col-lg-6">
-                <div class="card table-card mb-4">
+            <div class="dashboard-col">
+                <div class="card">
                     <div class="card-header">
-                        <i class="fas fa-money-bill-wave me-1"></i>
-                        Recent Payments
+                        <h2 class="card-title">
+                            <i class="fas fa-money-bill-wave"></i> Recent Payments
+                        </h2>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="table">
                                 <thead>
                                     <tr>
                                         <th>Tenant</th>
                                         <th>Property</th>
                                         <th>Amount</th>
-                                        <th>Date</th>
                                         <th>Method</th>
                                     </tr>
                                 </thead>
@@ -653,7 +672,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                                                 <td><?= htmlspecialchars($payment['first_name'] . ' ' . $payment['last_name']) ?></td>
                                                 <td><?= htmlspecialchars($payment['property_name']) ?></td>
                                                 <td>$<?= number_format($payment['amount'], 2) ?></td>
-                                                <td><?= date('M d, Y', strtotime($payment['payment_date'])) ?></td>
                                                 <td>
                                                     <?php
                                                     $methodClass = 'bank';
@@ -676,35 +694,36 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="5" class="text-center">No recent payments found</td>
+                                            <td colspan="4" class="text-center">No recent payments found</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
-                        <div class="text-end mt-3">
-                            <a href="payments.php" class="btn btn-sm btn-primary">View All Payments</a>
+                        <div style="text-align: right; margin-top: 1rem;">
+                            <a href="payment_report.php" class="btn btn-sm btn-primary">
+                                <i class="fas fa-eye"></i> View All Payments
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
             
             <!-- Vacant Properties Table -->
-            <div class="col-lg-6">
-                <div class="card table-card mb-4">
+            <div class="dashboard-col">
+                <div class="card">
                     <div class="card-header">
-                        <i class="fas fa-door-open me-1"></i>
-                        Properties with Vacancies
+                        <h2 class="card-title">
+                            <i class="fas fa-door-open"></i> Properties with Vacancies
+                        </h2>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="table">
                                 <thead>
                                     <tr>
                                         <th>Property</th>
                                         <th>Address</th>
-                                        <th>Total Units</th>
-                                        <th>Vacant</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -713,87 +732,48 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                                             <tr>
                                                 <td><?= htmlspecialchars($property['property_name']) ?></td>
                                                 <td><?= htmlspecialchars($property['address']) ?></td>
-                                                <td><?= $property['units'] ?></td>
-                                                <td>
-                                                    <span class="badge-vacant">
-                                                        <?= $property['vacant_units'] ?> vacant
-                                                    </span>
-                                                </td>
+                                                
                                             </tr>
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="4" class="text-center">No vacant properties found</td>
+                                            <td colspan="3" class="text-center">No vacant properties found</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
                             </table>
                         </div>
-                        <div class="text-end mt-3">
-                            <a href="properties.php?filter=vacant" class="btn btn-sm btn-primary">View All Vacancies</a>
+                        <div style="text-align: right; margin-top: 1rem;">
+                            <a href="properties.php?filter=vacant" class="btn btn-sm btn-primary">
+                                <i class="fas fa-eye"></i> View All Vacancies
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const sidebar = document.getElementById('sidebar');
-            const contentWrapper = document.getElementById('contentWrapper');
-            const sidebarToggle = document.getElementById('sidebarToggle');
-            const mobileToggle = document.getElementById('mobileToggle');
-            const mobileOverlay = document.getElementById('mobileOverlay');
-            const toggleIcon = sidebarToggle.querySelector('i');
-            
-            // Check for saved state
-            const sidebarState = localStorage.getItem('sidebarState');
-            if (sidebarState === 'collapsed') {
-                sidebar.classList.add('collapsed');
-                contentWrapper.classList.add('expanded');
-                toggleIcon.classList.remove('fa-chevron-left');
-                toggleIcon.classList.add('fa-chevron-right');
-            }
-            
-            // Desktop sidebar toggle
-            sidebarToggle.addEventListener('click', function() {
-                sidebar.classList.toggle('collapsed');
-                contentWrapper.classList.toggle('expanded');
-                
-                if (sidebar.classList.contains('collapsed')) {
-                    toggleIcon.classList.remove('fa-chevron-left');
-                    toggleIcon.classList.add('fa-chevron-right');
-                    localStorage.setItem('sidebarState', 'collapsed');
-                } else {
-                    toggleIcon.classList.remove('fa-chevron-right');
-                    toggleIcon.classList.add('fa-chevron-left');
-                    localStorage.setItem('sidebarState', 'expanded');
-                }
-            });
-            
-            // Mobile sidebar toggle
-            if (mobileToggle) {
-                mobileToggle.addEventListener('click', function() {
-                    sidebar.classList.toggle('mobile-show');
-                    mobileOverlay.classList.toggle('show');
-                });
-            }
-            
-            // Close sidebar when clicking overlay
-            mobileOverlay.addEventListener('click', function() {
-                sidebar.classList.remove('mobile-show');
-                mobileOverlay.classList.remove('show');
-            });
-            
-            // Close sidebar on mobile when window resizes to desktop
-            window.addEventListener('resize', function() {
-                if (window.innerWidth > 768) {
-                    sidebar.classList.remove('mobile-show');
-                    mobileOverlay.classList.remove('show');
-                }
-            });
-        });
-    </script>
+    </main>
+</div>
+
+<!-- Mobile menu toggle -->
+<div class="mobile-menu-toggle" id="mobileMenuToggle">
+    <i class="fas fa-bars"></i>
+</div>
+
+<script>
+    // Mobile menu toggle functionality
+    document.getElementById('mobileMenuToggle').addEventListener('click', function() {
+        document.querySelector('.sidebar').classList.toggle('active');
+        
+        const icon = this.querySelector('i');
+        if (icon.classList.contains('fa-bars')) {
+            icon.classList.remove('fa-bars');
+            icon.classList.add('fa-times');
+        } else {
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+    });
+</script>
 </body>
 </html>

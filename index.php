@@ -364,155 +364,7 @@ $accentColor = "#f59e0b";
         </div>
     </header>
 
-    <!-- Auth Modal -->
-    <div class="modal" id="authModal">
-        <div class="modal-content">
-            <!-- Login Options Section -->
-            <div class="auth-option" id="loginOptionsSection">
-                <div class="modal-header">
-                    <h2>Login to REMS</h2>
-                    <button class="close-modal" onclick="closeAuthModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p>Please select your account type:</p>
-                    <div class="role-selector">
-                        <div class="role-option" onclick="selectRole('tenant')">
-                            <i class="fas fa-user"></i>
-                            <h3>Tenant</h3>
-                            <p>Access your rental information</p>
-                        </div>
-                        <div class="role-option" onclick="selectRole('agent')">
-                            <i class="fas fa-id-badge"></i>
-                            <h3>Agent</h3>
-                            <p>Manage properties and clients</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Login Form Section -->
-            <div class="auth-option" id="loginFormSection">
-                <div class="modal-header">
-                    <h2>Login as <span id="roleTypeText">Tenant</span></h2>
-                    <button class="close-modal" onclick="closeAuthModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <button class="back-button" onclick="backToLoginOptions()">
-                        <i class="fas fa-arrow-left"></i> Back to options
-                    </button>
-                    <form action="login.php" method="POST">
-                        <input type="hidden" id="user-role" name="role" value="tenant">
-                        <div class="form-group">
-                            <label for="email">Email</label>
-                            <input type="email" id="email" name="email" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <div class="password-toggle">
-                                <input type="password" id="password" name="password" required>
-                                <i class="fas fa-eye" id="togglePassword"></i>
-                            </div>
-                        </div>
-                        <div class="form-group remember-forgot">
-                            <div>
-                                <input type="checkbox" id="remember" name="remember">
-                                <label for="remember" style="display: inline;">Remember me</label>
-                            </div>
-                            <a href="forgot-password.php">Forgot Password?</a>
-                        </div>
-                        <button type="submit" class="btn">Login</button>
-                    </form>
-                    <div class="social-login">
-                        <div class="social-login-divider">
-                            <span>Or continue with</span>
-                        </div>
-                        <div class="social-buttons">
-                            <button class="social-btn">
-                                <i class="fab fa-google"></i> Google
-                            </button>
-                            <button class="social-btn">
-                                <i class="fab fa-facebook-f"></i> Facebook
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <p>Don't have an account? <a href="#" onclick="switchToSignup()">Sign up</a></p>
-                </div>
-            </div>
-
-            <!-- Sign Up Section -->
-            <div class="auth-option" id="signupSection">
-                <div class="modal-header">
-                    <h2>Create an Account</h2>
-                    <button class="close-modal" onclick="closeAuthModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <form action="register.php" method="POST">
-                        <div class="form-group">
-                            <label for="signup-name">Full Name</label>
-                            <input type="text" id="signup-name" name="name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="signup-email">Email</label>
-                            <input type="email" id="signup-email" name="email" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="signup-password">Password</label>
-                            <div class="password-toggle">
-                                <input type="password" id="signup-password" name="password" required>
-                                <i class="fas fa-eye" id="toggleSignupPassword"></i>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="signup-confirm-password">Confirm Password</label>
-                            <div class="password-toggle">
-                                <input type="password" id="signup-confirm-password" name="confirm_password" required>
-                                <i class="fas fa-eye" id="toggleConfirmPassword"></i>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Account Type</label>
-                            <div class="role-selector">
-                                <div class="role-option selected" onclick="selectSignupRole('tenant')">
-                                    <i class="fas fa-user"></i>
-                                    <h3>Tenant</h3>
-                                    <p>Access your rental information</p>
-                                </div>
-                                <div class="role-option" onclick="selectSignupRole('agent')">
-                                    <i class="fas fa-id-badge"></i>
-                                    <h3>Agent</h3>
-                                    <p>Manage properties and clients</p>
-                                </div>
-                            </div>
-                            <input type="hidden" id="signup-role" name="role" value="tenant">
-                        </div>
-                        <div class="form-group">
-                            <input type="checkbox" id="terms" name="terms" required>
-                            <label for="terms" style="display: inline;">I agree to the <a href="terms.php">Terms of Service</a> and <a href="privacy.php">Privacy Policy</a></label>
-                        </div>
-                        <button type="submit" class="btn">Create Account</button>
-                    </form>
-                    <div class="social-login">
-                        <div class="social-login-divider">
-                            <span>Or sign up with</span>
-                        </div>
-                        <div class="social-buttons">
-                            <button class="social-btn">
-                                <i class="fab fa-google"></i> Google
-                            </button>
-                            <button class="social-btn">
-                                <i class="fab fa-facebook-f"></i> Facebook
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <p>Already have an account? <a href="#" onclick="switchToLogin()">Login</a></p>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Hero Section -->
     <section class="hero">
@@ -522,8 +374,8 @@ $accentColor = "#f59e0b";
                 <h1>Streamline Your Property Management</h1>
                 <p>Comprehensive solutions for landlords and property managers</p>
                 <div class="hero-buttons">
-                    <a href="add-property.php" class="btn btn-primary">List a Property</a>
-                    <a href="properties.php" class="btn btn-secondary">Browse Portfolio</a>
+                    <a href="properties.php" class="btn btn-primary">List a Property</a>
+                    <a href="contactus.php" class="btn btn-secondary">Talk to us</a>
                 </div>
             </div>
         </div>
@@ -746,11 +598,8 @@ $accentColor = "#f59e0b";
                 <div class="footer-col">
                     <h3>Resources</h3>
                     <ul class="footer-links">
-                        <li><a href="help.php">Help Center</a></li>
-                        <li><a href="blog.php">Blog</a></li>
-                        <li><a href="pricing.php">Pricing</a></li>
-                        <li><a href="faq.php">FAQ</a></li>
-                        <li><a href="privacy.php">Privacy Policy</a></li>
+                        <li><a href="terms-of-service.php">Terms of Service</a></li>
+                        <li><a href="privacy-policy.php">Privacy Policy</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
@@ -759,6 +608,7 @@ $accentColor = "#f59e0b";
                         <li><i class="fa-solid fa-location-dot"></i> 123 Business Ave, Suite 500<br>New York, NY 10001</li>
                         <li><i class="fa-solid fa-phone"></i> (555) 123-4567</li>
                         <li><i class="fa-solid fa-envelope"></i> info@rems.com</li>
+                        
                     </ul>
                 </div>
             </div>
@@ -778,6 +628,7 @@ $accentColor = "#f59e0b";
             <div class="modal-body" style="display:flex; flex-direction:column; gap:20px;">
                 <a href="tenant/login.php" class="btn">Tenant</a>
                 <a href="agent/agent-login.php" class="btn btn-outline">Agent</a>
+                <a href="admin/login.php" style="text-decoration: underline;">as Admin</a>
             </div>
         </div>
     </div>

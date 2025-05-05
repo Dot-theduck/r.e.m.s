@@ -1,5 +1,5 @@
 <?php
-require_once '../../rems/tenant/config.php';
+require_once '../tenant/config.php';
 
 // Handle CREATE
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_payment'])) {
@@ -13,22 +13,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_payment'])) {
 
     $stmt = $mysqli->prepare("INSERT INTO payments (tenant_property_id, amount, payment_date, payment_method, status, transaction_reference, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param("idsssss", $tenant_property_id, $amount, $payment_date, $payment_method, $status, $transaction_reference, $notes);
-    $stmt->execute();
-    $stmt->close();
     
-    // Redirect to prevent form resubmission
-    header("Location: ".$_SERVER['PHP_SELF']);
-    exit;
+    if ($stmt->execute()) {
+        $success_message = "Payment added successfully!";
+    } else {
+        $error_message = "Error adding payment: " . $stmt->error;
+    }
+    $stmt->close();
 }
 
 // Handle DELETE
 if (isset($_GET['delete'])) {
-    $id = $_GET['delete'];
-    $mysqli->query("DELETE FROM payments WHERE id = $id");
-    
-    // Redirect to prevent form resubmission
-    header("Location: ".$_SERVER['PHP_SELF']);
-    exit;
+    $id = intval($_GET['delete']);
+    if ($mysqli->query("DELETE FROM payments WHERE id = $id")) {
+        $success_message = "Payment deleted successfully!";
+    } else {
+        $error_message = "Error deleting payment: " . $mysqli->error;
+    }
 }
 
 // Handle UPDATE
@@ -44,25 +45,51 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_payment'])) {
 
     $stmt = $mysqli->prepare("UPDATE payments SET tenant_property_id=?, amount=?, payment_date=?, payment_method=?, status=?, transaction_reference=?, notes=? WHERE id=?");
     $stmt->bind_param("idsssssi", $tenant_property_id, $amount, $payment_date, $payment_method, $status, $transaction_reference, $notes, $id);
-    $stmt->execute();
-    $stmt->close();
     
-    // Redirect to prevent form resubmission
-    header("Location: ".$_SERVER['PHP_SELF']);
-    exit;
+    if ($stmt->execute()) {
+        $success_message = "Payment updated successfully!";
+    } else {
+        $error_message = "Error updating payment: " . $stmt->error;
+    }
+    $stmt->close();
 }
 
 // Fetch all payment records
-$result = $mysqli->query("SELECT * FROM payments ORDER BY payment_date DESC");
+$result = $mysqli->query("
+    SELECT p.*, 
+           CONCAT(u.first_name, ' ', u.last_name) AS tenant_name,
+           pr.title AS property_title
+    FROM payments p
+    LEFT JOIN tenant_properties tp ON p.tenant_property_id = tp.id
+    LEFT JOIN users u ON tp.tenant_id = u.id
+    LEFT JOIN properties pr ON tp.property_id = pr.id
+    WHERE u.user_type = 'tenant'
+    ORDER BY p.payment_date DESC
+");
 
-// Get tenant names for dropdown (assuming you have a tenants table)
-$tenants_result = $mysqli->query("SELECT tp.id, t.name FROM tenant_properties tp 
-                                 JOIN tenants t ON tp.tenant_id = t.id 
-                                 ORDER BY t.name");
-$tenant_options = [];
-if ($tenants_result) {
-    while ($tenant = $tenants_result->fetch_assoc()) {
-        $tenant_options[$tenant['id']] = $tenant['name'];
+$payments = [];
+if ($result) {
+    while ($row = $result->fetch_assoc()) {
+        $payments[] = $row;
+    }
+}
+
+// Get tenant properties for dropdown
+$tenant_properties_result = $mysqli->query("
+    SELECT tp.id, 
+           CONCAT(u.first_name, ' ', u.last_name) AS tenant_name,
+           pr.title AS property_title
+    FROM tenant_properties tp
+    JOIN users u ON tp.tenant_id = u.id
+    JOIN properties pr ON tp.property_id = pr.id
+    WHERE u.user_type = 'tenant'
+    ORDER BY u.last_name, u.first_name
+");
+
+$tenant_properties = [];
+if ($tenant_properties_result) {
+    while ($row = $tenant_properties_result->fetch_assoc()) {
+        $tenant_properties[$row['id']] = $row['tenant_name'] . ' - ' . $row['property_title'];
     }
 }
 ?>
@@ -72,813 +99,904 @@ if ($tenants_result) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Management</title>
+    <title>Payment Management | REMS</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Base Styles */
         :root {
-            --primary: #4361ee;
-            --primary-light: #4895ef;
-            --success: #4cc9f0;
-            --warning: #f8961e;
-            --danger: #f94144;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --gray: #6c757d;
-            --border: #dee2e6;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --sidebar-width: 250px;
-            --sidebar-collapsed-width: 70px;
-            --header-height: 60px;
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --primary-light: #93c5fd;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --light: #f8fafc;
+            --dark: #1e293b;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+            --agent-primary: #6366f1;
+            --agent-primary-dark: #4f46e5;
+            --agent-primary-light: #a5b4fc;
+            --agent-secondary: #8b5cf6;
+            --border-radius: 0.5rem;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: var(--dark);
-            background-color: #f0f4f8;
-            padding: 0;
-            overflow-x: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            color: var(--gray-800);
+            background-color: var(--gray-100);
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        
-        /* Layout */
-        .layout {
+
+        .agent-layout {
             display: flex;
             min-height: 100vh;
         }
-        
-        /* Sidebar */
+
+        /* Sidebar Styles */
         .sidebar {
-            width: var(--sidebar-width);
-            background-color: #2c3e50;
-            color: white;
-            position: fixed;
-            height: 100vh;
-            z-index: 1000;
-            transition: all 0.3s ease;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-        }
-        
-        .sidebar-collapsed {
-            width: var(--sidebar-collapsed-width);
-        }
-        
-        .sidebar-header {
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            height: var(--header-height);
-        }
-        
-        .sidebar-logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: white;
-            text-decoration: none;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .sidebar-toggle {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 1.2rem;
-        }
-        
-        .sidebar-menu {
-            padding: 20px 0;
-            list-style: none;
-        }
-        
-        .sidebar-item {
-            margin-bottom: 5px;
-        }
-        
-        .sidebar-link {
-            display: flex;
-            align-items: center;
-            padding: 12px 20px;
-            color: rgba(255, 255, 255, 0.7);
-            text-decoration: none;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
-        }
-        
-        .sidebar-link:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        
-        .sidebar-link.active {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-            border-left: 3px solid var(--primary);
-        }
-        
-        .sidebar-icon {
-            margin-right: 15px;
-            width: 20px;
-            text-align: center;
-        }
-        
-        .sidebar-text {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .sidebar-collapsed .sidebar-text {
-            display: none;
-        }
-        
-        .sidebar-footer {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            padding: 15px 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            margin-left: var(--sidebar-width);
-            transition: margin-left 0.3s ease;
-        }
-        
-        .main-content-expanded {
-            margin-left: var(--sidebar-collapsed-width);
-        }
-        
-        .container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
+            width: 260px;
             background-color: white;
-            box-shadow: 0 2px 10px var(--shadow);
-            padding: 0 20px;
-            margin-bottom: 30px;
-            height: var(--header-height);
-            display: flex;
-            align-items: center;
+            border-right: 1px solid var(--gray-200);
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 50;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
         }
-        
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-        }
-        
-        h1 {
-            color: var(--primary);
-            font-weight: 600;
-            margin: 0;
-            font-size: 1.8rem;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px var(--shadow);
-            margin-bottom: 30px;
-            overflow: hidden;
-        }
-        
-        .card-header {
-            padding: 20px;
-            background-color: var(--primary);
-            color: white;
-            font-weight: 500;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .card-body {
-            padding: 20px;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-row {
-            display: flex;
-            flex-wrap: wrap;
-            margin: 0 -10px;
-        }
-        
-        .form-col {
-            flex: 1;
-            padding: 0 10px;
-            min-width: 200px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: var(--gray);
-            font-size: 0.9rem;
-        }
-        
-        input, select, textarea {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            font-size: 1rem;
-            transition: border-color 0.3s;
-        }
-        
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
-        }
-        
-        textarea {
-            min-height: 100px;
-            resize: vertical;
-        }
-        
-        .btn {
-            display: inline-block;
-            font-weight: 500;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: middle;
-            user-select: none;
-            border: 1px solid transparent;
-            padding: 10px 20px;
-            font-size: 1rem;
-            line-height: 1.5;
-            border-radius: 4px;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        
-        .btn-primary {
-            color: white;
-            background-color: var(--primary);
-            border-color: var(--primary);
-        }
-        
-        .btn-primary:hover {
-            background-color: var(--primary-light);
-        }
-        
-        .btn-warning {
-            color: white;
-            background-color: var(--warning);
-            border-color: var(--warning);
-        }
-        
-        .btn-warning:hover {
-            background-color: #e67e00;
-        }
-        
-        .btn-danger {
-            color: white;
-            background-color: var(--danger);
-            border-color: var(--danger);
-        }
-        
-        .btn-danger:hover {
-            background-color: #e71d23;
-        }
-        
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 0.875rem;
-        }
-        
-        .btn-icon {
-            margin-right: 5px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        th {
-            background-color: #f8f9fa;
-            text-align: left;
-            padding: 12px 15px;
-            font-weight: 600;
-            color: var(--gray);
-            border-bottom: 2px solid var(--border);
-        }
-        
-        td {
-            padding: 12px 15px;
-            border-bottom: 1px solid var(--border);
-            vertical-align: middle;
-        }
-        
-        tr:hover {
-            background-color: rgba(67, 97, 238, 0.03);
-        }
-        
-        .table-responsive {
-            overflow-x: auto;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 5px 10px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            line-height: 1;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: baseline;
-            border-radius: 50px;
-        }
-        
-        .badge-pending {
-            background-color: #ffd166;
-            color: #805b10;
-        }
-        
-        .badge-completed {
-            background-color: #06d6a0;
-            color: #014d3b;
-        }
-        
-        .badge-failed {
-            background-color: #ef476f;
-            color: #7a1330;
-        }
-        
-        .badge-refunded {
-            background-color: #118ab2;
-            color: #073a4a;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 5px;
-        }
-        
-        .edit-form {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .edit-form input,
-        .edit-form select {
-            padding: 6px 10px;
-            font-size: 0.9rem;
-        }
-        
-        .edit-form .form-group {
-            margin-bottom: 0;
-            flex: 1;
-            min-width: 120px;
-        }
-        
-        .payment-method-icon {
-            margin-right: 5px;
-        }
-        
-        .amount-display {
-            font-weight: 600;
-            color: var(--primary);
-        }
-        
-        /* Mobile Responsive */
-        @media (max-width: 992px) {
+
+        @media (max-width: 768px) {
             .sidebar {
-                width: var(--sidebar-collapsed-width);
+                transform: translateX(-100%);
             }
             
-            .sidebar-text {
-                display: none;
+            .sidebar.active {
+                transform: translateX(0);
             }
             
             .main-content {
-                margin-left: var(--sidebar-collapsed-width);
-            }
-            
-            .sidebar-expanded {
-                width: var(--sidebar-width);
-                z-index: 1050;
-            }
-            
-            .sidebar-expanded .sidebar-text {
-                display: inline;
-            }
-            
-            .overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: rgba(0, 0, 0, 0.5);
-                z-index: 1040;
-            }
-            
-            .overlay-visible {
-                display: block;
+                margin-left: 0 !important;
             }
         }
-        
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--agent-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sidebar-nav {
+            padding: 1.5rem 0;
+        }
+
+        .sidebar-nav-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar-nav-link {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            color: var(--gray-600);
+            text-decoration: none;
+            transition: all 0.2s;
+            border-radius: 0.25rem;
+            margin: 0 0.5rem;
+        }
+
+        .sidebar-nav-link:hover {
+            background-color: var(--gray-100);
+            color: var(--gray-800);
+        }
+
+        .sidebar-nav-link.active {
+            background-color: var(--agent-primary-light);
+            color: var(--agent-primary-dark);
+            font-weight: 500;
+        }
+
+        .sidebar-nav-icon {
+            margin-right: 0.75rem;
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 2rem;
+            transition: margin-left 0.3s ease;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .page-title {
+            font-size: 1.875rem;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+
+        /* Button Styles */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.625rem 1.25rem;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            border: none;
+            font-size: 0.875rem;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: var(--agent-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--agent-primary-dark);
+        }
+
+        .btn-secondary {
+            background-color: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--gray-300);
+        }
+
+        .btn-warning {
+            background-color: var(--warning);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background-color: #e69009;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--gray-300);
+            color: var(--gray-700);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--gray-100);
+        }
+
+        .btn-sm {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        /* Card Styles */
+        .card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        .card-header {
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--gray-200);
+            background-color: var(--agent-primary-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--agent-primary-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* Form Styles */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+
+        .form-control {
+            display: block;
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--gray-800);
+            background-color: white;
+            background-clip: padding-box;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--border-radius);
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+
+        .form-control:focus {
+            border-color: var(--agent-primary);
+            outline: 0;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        }
+
+        .form-select {
+            display: block;
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--gray-800);
+            background-color: white;
+            background-clip: padding-box;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--border-radius);
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 16px 12px;
+        }
+
+        .form-select:focus {
+            border-color: var(--agent-primary);
+            outline: 0;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        }
+
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        /* Table Styles */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th,
+        .table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .table th {
+            text-align: left;
+            font-weight: 600;
+            color: var(--gray-700);
+            background-color: var(--gray-100);
+        }
+
+        .table tbody tr:hover {
+            background-color: var(--gray-50);
+        }
+
+        /* Badge Styles */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .badge-pending {
+            background-color: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .badge-completed {
+            background-color: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-failed {
+            background-color: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .badge-refunded {
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
+        }
+
+        /* Payment Method Styles */
+        .payment-method {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .payment-method.cash {
+            background-color: var(--success-light);
+            color: var(--success);
+        }
+
+        .payment-method.check {
+            background-color: var(--warning-light);
+            color: var(--warning);
+        }
+
+        .payment-method.credit_card {
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
+        }
+
+        .payment-method.bank_transfer {
+            background-color: var(--agent-primary-light);
+            color: var(--agent-primary-dark);
+        }
+
+        .payment-method i {
+            margin-right: 0.25rem;
+        }
+
+        /* Alert Styles */
+        .alert {
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: var(--border-radius);
+            border-left: 4px solid transparent;
+        }
+
+        .alert-success {
+            background-color: var(--success-light);
+            border-left-color: var(--success);
+            color: var(--success);
+        }
+
+        .alert-danger {
+            background-color: var(--danger-light);
+            border-left-color: var(--danger);
+            color: var(--danger);
+        }
+
+        /* Mobile menu toggle */
+        .mobile-menu-toggle {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            background-color: var(--agent-primary);
+            color: white;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            box-shadow: var(--shadow-md);
+            cursor: pointer;
+        }
+
         @media (max-width: 768px) {
-            .form-col {
-                flex: 100%;
+            .mobile-menu-toggle {
+                display: flex;
             }
             
-            .edit-form {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .form-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+        }
+
+        @media (max-width: 576px) {
+            .page-header {
                 flex-direction: column;
-                align-items: stretch;
+                align-items: flex-start;
             }
             
-            .edit-form .form-group {
+            .header-actions {
                 width: 100%;
             }
-            
-            .action-buttons {
-                flex-direction: column;
-                width: 100%;
-            }
-            
-            .btn {
-                width: 100%;
-                margin-bottom: 5px;
-            }
-            
-            .header-content h1 {
-                font-size: 1.5rem;
-            }
+        }
+
+        /* Toggle Form */
+        #addPaymentForm {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="layout">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <a href="#" class="sidebar-logo">
-                    <i class="fas fa-building"></i>
-                    <span class="sidebar-text">REMS Admin</span>
+<div class="agent-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <i class="fas fa-building"></i>
+                <span>REMS ADMIN</span>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-item">
+                <a href="dashboard.php" class="sidebar-nav-link active">
+                    <i class="fas fa-tachometer-alt sidebar-nav-icon"></i>
+                    Dashboard
                 </a>
-                <button class="sidebar-toggle" id="sidebar-toggle">
-                    <i class="fas fa-bars"></i>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="properties.php" class="sidebar-nav-link">
+                    <i class="fas fa-building sidebar-nav-icon"></i>
+                    Properties
+                </a>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="tenants.php" class="sidebar-nav-link">
+                    <i class="fas fa-users sidebar-nav-icon"></i>
+                    Tenants
+                </a>
+            </div>
+            <div class="sidebar-nav-item">
+                <a href="payment.php" class="sidebar-nav-link">
+                    <i class="fas fa-money-bill-wave sidebar-nav-icon"></i>
+                    Payments
+                </a>
+            </div>
+            
+            <div class="sidebar-nav-item">
+                <a href="../index.php" class="sidebar-nav-link">
+                    <i class="fas fa-sign-out-alt sidebar-nav-icon"></i>
+                    Logout
+                </a>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Payment Management</h1>
+            <div class="header-actions">
+                <button type="button" class="btn btn-primary" onclick="toggleAddPaymentForm()">
+                    <i class="fas fa-plus"></i> Add New Payment
                 </button>
             </div>
-            
-            <ul class="sidebar-menu">
-                <li class="sidebar-item">
-                    <a href="../dashboard/index.php" class="sidebar-link">
-                        <i class="fas fa-tachometer-alt sidebar-icon"></i>
-                        <span class="sidebar-text">Dashboard</span>
-                    </a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="../tenant/index.php" class="sidebar-link">
-                        <i class="fas fa-users sidebar-icon"></i>
-                        <span class="sidebar-text">Tenant Management</span>
-                    </a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="../agent/index.php" class="sidebar-link">
-                        <i class="fas fa-user-tie sidebar-icon"></i>
-                        <span class="sidebar-text">Agent Management</span>
-                    </a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="index.php" class="sidebar-link active">
-                        <i class="fas fa-money-bill-wave sidebar-icon"></i>
-                        <span class="sidebar-text">Payment</span>
-                    </a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="../properties/index.php" class="sidebar-link">
-                        <i class="fas fa-home sidebar-icon"></i>
-                        <span class="sidebar-text">Properties</span>
-                    </a>
-                </li>
-            </ul>
-            
-            <div class="sidebar-footer">
-                <a href="../logout.php" class="sidebar-link">
-                    <i class="fas fa-sign-out-alt sidebar-icon"></i>
-                    <span class="sidebar-text">Log Out</span>
-                </a>
-            </div>
-        </aside>
-        
-        <!-- Overlay for mobile -->
-        <div class="overlay" id="overlay"></div>
-        
-        <!-- Main Content -->
-        <main class="main-content" id="main-content">
-            <header>
-                <div class="header-content">
-                    <h1><i class="fas fa-money-bill-wave"></i> Payment Management</h1>
-                    <div class="header-actions">
-                        <span class="badge" style="background-color: #e9ecef; color: var(--dark);">
-                            <i class="fas fa-calendar"></i> <?= date('F j, Y') ?>
-                        </span>
-                    </div>
-                </div>
-            </header>
+        </div>
 
-            <div class="container">
-                <!-- Add New Payment -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-plus-circle"></i> Add New Payment</h2>
+        <?php if (isset($success_message)): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> <?php echo $success_message; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($error_message)): ?>
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle"></i> <?php echo $error_message; ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Add Payment Form Card -->
+        <div class="card" id="addPaymentForm">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i class="fas fa-plus-circle"></i> Add New Payment
+                </h2>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="tenant_property_id" class="form-label">Tenant & Property</label>
+                            <select name="tenant_property_id" id="tenant_property_id" class="form-select" required>
+                                <option value="">Select Tenant & Property</option>
+                                <?php foreach ($tenant_properties as $id => $name): ?>
+                                    <option value="<?php echo $id; ?>"><?php echo htmlspecialchars($name); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="amount" class="form-label">Amount ($)</label>
+                            <input type="number" step="0.01" name="amount" id="amount" class="form-control" placeholder="0.00" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="payment_date" class="form-label">Payment Date</label>
+                            <input type="date" name="payment_date" id="payment_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="payment_method" class="form-label">Payment Method</label>
+                            <select name="payment_method" id="payment_method" class="form-select" required>
+                                <option value="cash">Cash</option>
+                                <option value="check">Check</option>
+                                <option value="credit_card">Credit Card</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="status" class="form-label">Status</label>
+                            <select name="status" id="status" class="form-select" required>
+                                <option value="pending">Pending</option>
+                                <option value="completed">Completed</option>
+                                <option value="failed">Failed</option>
+                                <option value="refunded">Refunded</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="transaction_reference" class="form-label">Transaction Reference</label>
+                            <input type="text" name="transaction_reference" id="transaction_reference" class="form-control" placeholder="e.g., Receipt #12345">
+                        </div>
+                        
+                        <div class="form-group full-width">
+                            <label for="notes" class="form-label">Notes (optional)</label>
+                            <textarea name="notes" id="notes" class="form-control form-textarea" placeholder="Add any additional information about this payment"></textarea>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <form method="POST">
-                            <div class="form-row">
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="tenant_property_id">Tenant Property</label>
-                                        <select name="tenant_property_id" id="tenant_property_id" required>
-                                            <?php if (!empty($tenant_options)): ?>
-                                                <?php foreach ($tenant_options as $id => $name): ?>
-                                                    <option value="<?= $id ?>"><?= htmlspecialchars($name) ?> (ID: <?= $id ?>)</option>
-                                                <?php endforeach; ?>
-                                            <?php else: ?>
-                                                <option value="">Select Tenant Property</option>
-                                            <?php endif; ?>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="amount">Amount</label>
-                                        <div style="position: relative;">
-                                            <input type="number" step="0.01" name="amount" id="amount" placeholder="0.00" required>
-                                            <span style="position: absolute; left: 12px; top: 10px;">$</span>
-                                            <style>
-                                                #amount { padding-left: 25px; }
-                                            </style>
+                    
+                    <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem;">
+                        <button type="button" class="btn btn-secondary" onclick="toggleAddPaymentForm()">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button type="submit" name="add_payment" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Add Payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Payment Records Table -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i class="fas fa-list"></i> Payment Records
+                </h2>
+                <span class="badge" style="background-color: var(--gray-200); color: var(--gray-700);">
+                    <?php echo count($payments); ?> Records
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tenant</th>
+                                <th>Property</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                                <th>Method</th>
+                                <th>Status</th>
+                                <th>Reference</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($payments) > 0): ?>
+                                <?php foreach ($payments as $payment): ?>
+                                    <tr>
+                                        <td><?php echo $payment['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($payment['tenant_name'] ?? 'N/A'); ?></td>
+                                        <td><?php echo htmlspecialchars($payment['property_title'] ?? 'N/A'); ?></td>
+                                        <td>$<?php echo number_format($payment['amount'], 2); ?></td>
+                                        <td><?php echo date('M d, Y', strtotime($payment['payment_date'])); ?></td>
+                                        <td>
+                                            <?php
+                                            $methodClass = $payment['payment_method'];
+                                            $methodIcon = 'money-bill-wave';
+                                            
+                                            if ($payment['payment_method'] === 'check') {
+                                                $methodIcon = 'money-check';
+                                            } elseif ($payment['payment_method'] === 'credit_card') {
+                                                $methodIcon = 'credit-card';
+                                            } elseif ($payment['payment_method'] === 'bank_transfer') {
+                                                $methodIcon = 'university';
+                                            }
+                                            ?>
+                                            <span class="payment-method <?php echo $methodClass; ?>">
+                                                <i class="fas fa-<?php echo $methodIcon; ?>"></i>
+                                                <?php echo ucfirst(str_replace('_', ' ', $payment['payment_method'])); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-<?php echo $payment['status']; ?>">
+                                                <?php echo ucfirst($payment['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($payment['transaction_reference'] ?: 'N/A'); ?></td>
+                                        <td>
+                                            <div style="display: flex; gap: 0.5rem;">
+                                                <button type="button" class="btn btn-sm btn-warning" onclick="openEditModal(<?php echo $payment['id']; ?>)">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <a href="?delete=<?php echo $payment['id']; ?>" onclick="return confirm('Are you sure you want to delete this payment record?')" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        <div style="padding: 2rem 1rem; text-align: center;">
+                                            <i class="fas fa-info-circle" style="font-size: 2rem; color: var(--gray-400); margin-bottom: 1rem;"></i>
+                                            <p>No payment records found. Add your first payment using the form above.</p>
                                         </div>
-                                    </div>
-                                </div>
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="payment_date">Payment Date</label>
-                                        <input type="date" name="payment_date" id="payment_date" value="<?= date('Y-m-d') ?>" required>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="payment_method">Payment Method</label>
-                                        <select name="payment_method" id="payment_method" required>
-                                            <option value="cash">Cash</option>
-                                            <option value="check">Check</option>
-                                            <option value="credit_card">Credit Card</option>
-                                            <option value="bank_transfer">Bank Transfer</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="status">Status</label>
-                                        <select name="status" id="status" required>
-                                            <option value="pending">Pending</option>
-                                            <option value="completed">Completed</option>
-                                            <option value="failed">Failed</option>
-                                            <option value="refunded">Refunded</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="form-col">
-                                    <div class="form-group">
-                                        <label for="transaction_reference">Transaction Reference</label>
-                                        <input type="text" name="transaction_reference" id="transaction_reference" placeholder="e.g., Receipt #12345">
-                                    </div>
-                                </div>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Payment Modal (Hidden by default) -->
+        <div id="editModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+            <div style="background-color: white; margin: 2rem auto; max-width: 800px; border-radius: var(--border-radius); box-shadow: var(--shadow-lg);">
+                <div style="padding: 1.25rem; border-bottom: 1px solid var(--gray-200); background-color: var(--agent-primary-light); display: flex; justify-content: space-between; align-items: center;">
+                    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--agent-primary-dark);">
+                        <i class="fas fa-edit"></i> Edit Payment
+                    </h2>
+                    <button type="button" onclick="closeEditModal()" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--gray-600);">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div style="padding: 1.5rem;">
+                    <form method="POST" id="editForm">
+                        <input type="hidden" name="id" id="edit_id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="edit_tenant_property_id" class="form-label">Tenant & Property</label>
+                                <select name="tenant_property_id" id="edit_tenant_property_id" class="form-select" required>
+                                    <?php foreach ($tenant_properties as $id => $name): ?>
+                                        <option value="<?php echo $id; ?>"><?php echo htmlspecialchars($name); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="notes">Notes (optional)</label>
-                                <textarea name="notes" id="notes" placeholder="Add any additional information about this payment"></textarea>
+                                <label for="edit_amount" class="form-label">Amount ($)</label>
+                                <input type="number" step="0.01" name="amount" id="edit_amount" class="form-control" required>
                             </div>
                             
-                            <button type="submit" name="add_payment" class="btn btn-primary">
-                                <i class="fas fa-save btn-icon"></i> Add Payment
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Payment Table -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-list"></i> Payment Records</h2>
-                        <span class="badge" style="background-color: #e9ecef; color: var(--dark);">
-                            <?= $result->num_rows ?> Records
-                        </span>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Tenant</th>
-                                        <th>Amount</th>
-                                        <th>Date</th>
-                                        <th>Method</th>
-                                        <th>Status</th>
-                                        <th>Reference</th>
-                                        <th>Notes</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($result->num_rows > 0): ?>
-                                        <?php while ($row = $result->fetch_assoc()): ?>
-                                            <tr>
-                                                <form method="POST" class="edit-form">
-                                                    <td>
-                                                        <?= $row['id'] ?>
-                                                        <input type="hidden" name="id" value="<?= $row['id'] ?>">
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <select name="tenant_property_id">
-                                                                <?php if (!empty($tenant_options)): ?>
-                                                                    <?php foreach ($tenant_options as $id => $name): ?>
-                                                                        <option value="<?= $id ?>" <?= $row['tenant_property_id'] == $id ? 'selected' : '' ?>>
-                                                                            <?= htmlspecialchars($name) ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                <?php else: ?>
-                                                                    <option value="<?= $row['tenant_property_id'] ?>"><?= $row['tenant_property_id'] ?></option>
-                                                                <?php endif; ?>
-                                                            </select>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <input type="number" step="0.01" name="amount" value="<?= $row['amount'] ?>">
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <input type="date" name="payment_date" value="<?= $row['payment_date'] ?>">
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <select name="payment_method">
-                                                                <?php 
-                                                                $methods = [
-                                                                    'cash' => '<i class="fas fa-money-bill-wave"></i> Cash',
-                                                                    'check' => '<i class="fas fa-money-check"></i> Check',
-                                                                    'credit_card' => '<i class="fas fa-credit-card"></i> Credit Card',
-                                                                    'bank_transfer' => '<i class="fas fa-university"></i> Bank Transfer'
-                                                                ];
-                                                                foreach ($methods as $value => $label): 
-                                                                ?>
-                                                                    <option value="<?= $value ?>" <?= $row['payment_method'] == $value ? 'selected' : '' ?>>
-                                                                        <?= $value ?>
-                                                                    </option>
-                                                                <?php endforeach; ?>
-                                                            </select>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <select name="status">
-                                                                <?php 
-                                                                $statuses = [
-                                                                    'pending' => 'Pending',
-                                                                    'completed' => 'Completed',
-                                                                    'failed' => 'Failed',
-                                                                    'refunded' => 'Refunded'
-                                                                ];
-                                                                foreach ($statuses as $value => $label): 
-                                                                ?>
-                                                                    <option value="<?= $value ?>" <?= $row['status'] == $value ? 'selected' : '' ?>>
-                                                                        <?= $label ?>
-                                                                    </option>
-                                                                <?php endforeach; ?>
-                                                            </select>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <input type="text" name="transaction_reference" value="<?= htmlspecialchars($row['transaction_reference']) ?>">
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="form-group">
-                                                            <textarea name="notes"><?= htmlspecialchars($row['notes']) ?></textarea>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div class="action-buttons">
-                                                            <button type="submit" name="update_payment" class="btn btn-warning btn-sm">
-                                                                <i class="fas fa-save"></i> Update
-                                                            </button>
-                                                            <a href="?delete=<?= $row['id'] ?>" onclick="return confirm('Are you sure you want to delete this payment record?')" class="btn btn-danger btn-sm">
-                                                                <i class="fas fa-trash"></i> Delete
-                                                            </a>
-                                                        </div>
-                                                    </td>
-                                                </form>
-                                            </tr>
-                                        <?php endwhile; ?>
-                                    <?php else: ?>
-                                        <tr>
-                                            <td colspan="9" style="text-align: center; padding: 30px;">
-                                                <i class="fas fa-info-circle" style="font-size: 2rem; color: var(--gray); margin-bottom: 10px;"></i>
-                                                <p>No payment records found. Add your first payment using the form above.</p>
-                                            </td>
-                                        </tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
+                            <div class="form-group">
+                                <label for="edit_payment_date" class="form-label">Payment Date</label>
+                                <input type="date" name="payment_date" id="edit_payment_date" class="form-control" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="edit_payment_method" class="form-label">Payment Method</label>
+                                <select name="payment_method" id="edit_payment_method" class="form-select" required>
+                                    <option value="cash">Cash</option>
+                                    <option value="check">Check</option>
+                                    <option value="credit_card">Credit Card</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="edit_status" class="form-label">Status</label>
+                                <select name="status" id="edit_status" class="form-select" required>
+                                    <option value="pending">Pending</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="failed">Failed</option>
+                                    <option value="refunded">Refunded</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="edit_transaction_reference" class="form-label">Transaction Reference</label>
+                                <input type="text" name="transaction_reference" id="edit_transaction_reference" class="form-control">
+                            </div>
+                            
+                            <div class="form-group full-width">
+                                <label for="edit_notes" class="form-label">Notes</label>
+                                <textarea name="notes" id="edit_notes" class="form-control form-textarea"></textarea>
+                            </div>
                         </div>
-                    </div>
+                        
+                        <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem;">
+                            <button type="button" class="btn btn-secondary" onclick="closeEditModal()">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                            <button type="submit" name="update_payment" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Update Payment
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
+    </main>
+</div>
 
-    <script>
-        // Sidebar toggle functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('main-content');
-            const sidebarToggle = document.getElementById('sidebar-toggle');
-            const overlay = document.getElementById('overlay');
+<!-- Mobile menu toggle -->
+<div class="mobile-menu-toggle" id="mobileMenuToggle">
+    <i class="fas fa-bars"></i>
+</div>
+
+<script>
+    // Mobile menu toggle functionality
+    document.getElementById('mobileMenuToggle').addEventListener('click', function() {
+        document.querySelector('.sidebar').classList.toggle('active');
+        
+        const icon = this.querySelector('i');
+        if (icon.classList.contains('fa-bars')) {
+            icon.classList.remove('fa-bars');
+            icon.classList.add('fa-times');
+        } else {
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+    });
+
+    // Toggle Add Payment Form
+    function toggleAddPaymentForm() {
+        const form = document.getElementById('addPaymentForm');
+        if (form.style.display === 'none' || form.style.display === '') {
+            form.style.display = 'block';
+            // Scroll to form
+            form.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            form.style.display = 'none';
+        }
+    }
+
+    // Edit Payment Modal Functions
+    function openEditModal(paymentId) {
+        // In a real application, you would fetch the payment data via AJAX
+        // For this example, we'll use the data already in the table
+        const payments = <?php echo json_encode($payments); ?>;
+        const payment = payments.find(p => p.id == paymentId);
+        
+        if (payment) {
+            document.getElementById('edit_id').value = payment.id;
+            document.getElementById('edit_tenant_property_id').value = payment.tenant_property_id;
+            document.getElementById('edit_amount').value = payment.amount;
+            document.getElementById('edit_payment_date').value = payment.payment_date;
+            document.getElementById('edit_payment_method').value = payment.payment_method;
+            document.getElementById('edit_status').value = payment.status;
+            document.getElementById('edit_transaction_reference').value = payment.transaction_reference;
+            document.getElementById('edit_notes').value = payment.notes;
             
-            // Toggle sidebar on button click
-            sidebarToggle.addEventListener('click', function() {
-                sidebar.classList.toggle('sidebar-expanded');
-                overlay.classList.toggle('overlay-visible');
-            });
-            
-            // Close sidebar when clicking overlay
-            overlay.addEventListener('click', function() {
-                sidebar.classList.remove('sidebar-expanded');
-                overlay.classList.remove('overlay-visible');
-            });
-            
-            // Format currency display
-            const amountInputs = document.querySelectorAll('input[name="amount"]');
-            amountInputs.forEach(input => {
-                input.addEventListener('focus', function() {
-                    this.style.paddingLeft = '25px';
+            document.getElementById('editModal').style.display = 'block';
+            document.body.style.overflow = 'hidden'; // Prevent scrolling behind modal
+        }
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+        document.body.style.overflow = 'auto'; // Re-enable scrolling
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('editModal');
+        if (event.target === modal) {
+            closeEditModal();
+        }
+    });
+
+    // Form validation
+    document.addEventListener('DOMContentLoaded', function() {
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                const requiredFields = form.querySelectorAll('[required]');
+                let valid = true;
+                
+                requiredFields.forEach(field => {
+                    if (!field.value.trim()) {
+                        field.style.borderColor = 'var(--danger)';
+                        valid = false;
+                    } else {
+                        field.style.borderColor = '';
+                    }
                 });
-            });
-            
-            // Highlight row on hover
-            const tableRows = document.querySelectorAll('tbody tr');
-            tableRows.forEach(row => {
-                row.addEventListener('mouseover', function() {
-                    this.style.backgroundColor = 'rgba(67, 97, 238, 0.05)';
-                });
-                row.addEventListener('mouseout', function() {
-                    this.style.backgroundColor = '';
-                });
-            });
-            
-            // Responsive sidebar handling
-            function handleResize() {
-                if (window.innerWidth < 992) {
-                    sidebar.classList.remove('sidebar-expanded');
-                    mainContent.classList.remove('main-content-expanded');
-                    overlay.classList.remove('overlay-visible');
+                
+                if (!valid) {
+                    e.preventDefault();
+                    alert('Please fill in all required fields');
                 }
-            }
-            
-            // Initial check and event listener for window resize
-            handleResize();
-            window.addEventListener('resize', handleResize);
+            });
         });
-    </script>
+    });
+</script>
 </body>
 </html>
+

@@ -1,52 +1,250 @@
 <?php
-require_once '../../tenant/config.php'; // database connection
+require_once '../../tenant/config.php';
 
-$id = $_GET['id'];
-
-$sql = "SELECT * FROM properties WHERE id = ?";
-$stmt = $mysqli->prepare($sql);
-$stmt->bind_param("i", $id);
-$stmt->execute();
-$result = $stmt->get_result();
-$property = $result->fetch_assoc();
-
-if (!$property) {
-    die("Property not found!");
-}
-
+$property_id = $_GET['id'] ?? null;
 $success_message = '';
 $error_message = '';
 
+// Fetch existing property
+if ($property_id) {
+    $result = $mysqli->query("SELECT * FROM properties WHERE id = $property_id");
+    $property = $result->fetch_assoc();
+    
+    // Fetch existing property images
+    $images_result = $mysqli->query("SELECT * FROM property_images WHERE property_id = $property_id ORDER BY sort_order");
+    $property_images = [];
+    if ($images_result) {
+        while ($img = $images_result->fetch_assoc()) {
+            $property_images[] = $img;
+        }
+    }
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $title = $_POST['title'];
+    $description = $_POST['description'];
+    $address = $_POST['address'];
     $city = $_POST['city'];
+    $state = $_POST['state'];
+    $zip_code = $_POST['zip_code'];
     $bedrooms = $_POST['bedrooms'];
     $bathrooms = $_POST['bathrooms'];
     $square_footage = $_POST['square_footage'];
     $monthly_rent = $_POST['monthly_rent'];
     $status = $_POST['status'];
-    $featured_image = $_POST['featured_image'];
 
-    $sql = "UPDATE properties SET title=?, city=?, bedrooms=?, bathrooms=?, square_footage=?, monthly_rent=?, status=?, featured_image=? WHERE id=?";
-    $stmt = $mysqli->prepare($sql);
-    $stmt->bind_param("ssiiidssi", $title, $city, $bedrooms, $bathrooms, $square_footage, $monthly_rent, $status, $featured_image, $id);
+    // Handle featured image
+    $featured_image = $property['featured_image']; // Keep old image by default
+    if (!empty($_FILES['featured_image']['name'])) {
+        $target_dir = "uploads/";
+        
+        // Create directory if it doesn't exist
+        if (!file_exists($target_dir)) {
+            mkdir($target_dir, 0755, true);
+        }
+        
+        $filename = time() . '_' . basename($_FILES["featured_image"]["name"]);
+        $target_file = $target_dir . $filename;
+        $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+        
+        // Check if image file is a valid image
+        $check = getimagesize($_FILES["featured_image"]["tmp_name"]);
+        if ($check === false) {
+            $error_message = "File is not a valid image.";
+        } 
+        // Check file size (limit to 5MB)
+        else if ($_FILES["featured_image"]["size"] > 5000000) {
+            $error_message = "Sorry, your file is too large. Maximum size is 5MB.";
+        }
+        // Allow only certain file formats
+        else if ($imageFileType != "jpg" && $imageFileType != "png" && $imageFileType != "jpeg" && $imageFileType != "gif") {
+            $error_message = "Sorry, only JPG, JPEG, PNG & GIF files are allowed.";
+        }
+        // If everything is ok, try to upload file
+        else if (move_uploaded_file($_FILES["featured_image"]["tmp_name"], $target_file)) {
+            $featured_image = $target_file;
 
-    if ($stmt->execute()) {
-        $success_message = "Property updated successfully!";
-        // Update the property variable with new values
-        $property = [
-            'id' => $id,
-            'title' => $title,
-            'city' => $city,
-            'bedrooms' => $bedrooms,
-            'bathrooms' => $bathrooms,
-            'square_footage' => $square_footage,
-            'monthly_rent' => $monthly_rent,
-            'status' => $status,
-            'featured_image' => $featured_image
-        ];
-    } else {
-        $error_message = "Error: " . $stmt->error;
+            // Delete old image
+            if (!empty($property['featured_image']) && file_exists($property['featured_image'])) {
+                unlink($property['featured_image']);
+            }
+        } else {
+            $error_message = "Sorry, there was an error uploading your file.";
+        }
+    }
+
+    // Only proceed with database update if there are no errors
+    if (empty($error_message)) {
+        $stmt = $mysqli->prepare("UPDATE properties SET 
+            title = ?, description = ?, address = ?, city = ?, state = ?, zip_code = ?, 
+            bedrooms = ?, bathrooms = ?, square_footage = ?, monthly_rent = ?, 
+            status = ?, featured_image = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?");
+
+        $stmt->bind_param("ssssssiidsssi", 
+            $title, $description, $address, $city, $state, $zip_code,
+            $bedrooms, $bathrooms, $square_footage, $monthly_rent,
+            $status, $featured_image, $property_id
+        );
+
+        if ($stmt->execute()) {
+            $success_message = "Property details updated successfully!";
+            
+            // Process additional property images
+            if (!empty($_FILES['property_images']['name'][0])) {
+                $uploadedImages = 0;
+                $failedImages = 0;
+                
+                // Get the current highest sort order
+                $sort_result = $mysqli->query("SELECT MAX(sort_order) as max_order FROM property_images WHERE property_id = $property_id");
+                $sort_row = $sort_result->fetch_assoc();
+                $next_sort_order = ($sort_row['max_order'] ?? 0) + 1;
+                
+                // Loop through each uploaded image
+                foreach ($_FILES['property_images']['name'] as $key => $name) {
+                    if (empty($name)) continue;
+                    
+                    $tmp_name = $_FILES['property_images']['tmp_name'][$key];
+                    $size = $_FILES['property_images']['size'][$key];
+                    $type = $_FILES['property_images']['type'][$key];
+                    $error = $_FILES['property_images']['error'][$key];
+                    
+                    // Skip if there was an upload error
+                    if ($error !== UPLOAD_ERR_OK) {
+                        $failedImages++;
+                        continue;
+                    }
+                    
+                    // Check file size (limit to 5MB)
+                    if ($size > 5000000) {
+                        $failedImages++;
+                        continue;
+                    }
+                    
+                    // Get file extension and check if it's allowed
+                    $imageFileType = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                    if (!in_array($imageFileType, ['jpg', 'jpeg', 'png', 'gif'])) {
+                        $failedImages++;
+                        continue;
+                    }
+                    
+                    // Generate unique filename
+                    $filename = time() . '_' . $key . '_' . basename($name);
+                    $target_file = $target_dir . $filename;
+                    
+                    // Convert to JPEG if not already
+                    if ($imageFileType != 'jpg' && $imageFileType != 'jpeg') {
+                        $image = null;
+                        
+                        if ($imageFileType == 'png') {
+                            $image = imagecreatefrompng($tmp_name);
+                        } else if ($imageFileType == 'gif') {
+                            $image = imagecreatefromgif($tmp_name);
+                        }
+                        
+                        if ($image) {
+                            $bg = imagecreatetruecolor(imagesx($image), imagesy($image));
+                            imagefill($bg, 0, 0, imagecolorallocate($bg, 255, 255, 255));
+                            imagealphablending($bg, TRUE);
+                            imagecopy($bg, $image, 0, 0, 0, 0, imagesx($image), imagesy($image));
+                            imagedestroy($image);
+                            
+                            // Change filename to jpg
+                            $filename = str_replace('.' . $imageFileType, '.jpg', $filename);
+                            $target_file = $target_dir . $filename;
+                            
+                            if (imagejpeg($bg, $target_file, 90)) {
+                                imagedestroy($bg);
+                                
+                                // Insert into database
+                                $img_stmt = $mysqli->prepare("INSERT INTO property_images (property_id, image_path, sort_order, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)");
+                                $img_stmt->bind_param("isi", $property_id, $target_file, $next_sort_order);
+                                
+                                if ($img_stmt->execute()) {
+                                    $uploadedImages++;
+                                    $next_sort_order++;
+                                } else {
+                                    $failedImages++;
+                                    if (file_exists($target_file)) {
+                                        unlink($target_file);
+                                    }
+                                }
+                            } else {
+                                $failedImages++;
+                            }
+                        } else {
+                            $failedImages++;
+                        }
+                    } else {
+                        // Just move the uploaded file for JPG/JPEG
+                        if (move_uploaded_file($tmp_name, $target_file)) {
+                            // Insert into database
+                            $img_stmt = $mysqli->prepare("INSERT INTO property_images (property_id, image_path, sort_order, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)");
+                            $img_stmt->bind_param("isi", $property_id, $target_file, $next_sort_order);
+                            
+                            if ($img_stmt->execute()) {
+                                $uploadedImages++;
+                                $next_sort_order++;
+                            } else {
+                                $failedImages++;
+                                if (file_exists($target_file)) {
+                                    unlink($target_file);
+                                }
+                            }
+                        } else {
+                            $failedImages++;
+                        }
+                    }
+                }
+                
+                if ($uploadedImages > 0) {
+                    $success_message .= " Successfully uploaded $uploadedImages new image" . ($uploadedImages > 1 ? "s" : "") . ".";
+                }
+                
+                if ($failedImages > 0) {
+                    $error_message = "Failed to upload $failedImages image" . ($failedImages > 1 ? "s" : "") . ". Please check file types and sizes.";
+                }
+            }
+            
+            // Handle image deletions
+            if (isset($_POST['delete_image']) && is_array($_POST['delete_image'])) {
+                $deleted_count = 0;
+                
+                foreach ($_POST['delete_image'] as $image_id) {
+                    // Get the image path first
+                    $img_result = $mysqli->query("SELECT image_path FROM property_images WHERE id = $image_id AND property_id = $property_id");
+                    if ($img_result && $img_row = $img_result->fetch_assoc()) {
+                        // Delete the file
+                        if (file_exists($img_row['image_path'])) {
+                            unlink($img_row['image_path']);
+                        }
+                        
+                        // Delete from database
+                        $mysqli->query("DELETE FROM property_images WHERE id = $image_id AND property_id = $property_id");
+                        $deleted_count++;
+                    }
+                }
+                
+                if ($deleted_count > 0) {
+                    $success_message .= " Deleted $deleted_count image" . ($deleted_count > 1 ? "s" : "") . ".";
+                }
+            }
+            
+            // Refresh property data after update
+            $result = $mysqli->query("SELECT * FROM properties WHERE id = $property_id");
+            $property = $result->fetch_assoc();
+            
+            // Refresh property images
+            $images_result = $mysqli->query("SELECT * FROM property_images WHERE property_id = $property_id ORDER BY sort_order");
+            $property_images = [];
+            if ($images_result) {
+                while ($img = $images_result->fetch_assoc()) {
+                    $property_images[] = $img;
+                }
+            }
+        } else {
+            $error_message = "Error updating property: " . $stmt->error;
+        }
     }
 }
 ?>
@@ -481,6 +679,124 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 display: flex;
             }
         }
+        
+        /* Image Gallery Styles */
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .image-item {
+            position: relative;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .image-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .image-actions {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 0.25rem;
+            display: flex;
+            gap: 0.25rem;
+        }
+        
+        .image-action {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .image-action:hover {
+            background-color: white;
+            color: var(--danger);
+        }
+        
+        .image-upload-container {
+            border: 2px dashed var(--gray-300);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .image-upload-container:hover {
+            border-color: var(--agent-primary);
+            background-color: var(--gray-100);
+        }
+        
+        .image-upload-icon {
+            font-size: 2rem;
+            color: var(--gray-400);
+            margin-bottom: 0.5rem;
+        }
+        
+        .image-upload-text {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+        
+        .image-preview-container {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        
+        .image-preview-item {
+            position: relative;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .image-preview-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .image-preview-remove {
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: var(--danger);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .image-preview-remove:hover {
+            background-color: var(--danger);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -560,7 +876,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <div class="form-header">
                     <h2 class="form-title">Property Information</h2>
                 </div>
-                <form method="post" id="propertyForm">
+                <form method="post" id="propertyForm" enctype="multipart/form-data">
                     <div class="form-body">
                         <div class="form-grid">
                             <div class="form-group">
@@ -603,10 +919,76 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                             
                             <div class="form-group full-width">
-                                <label for="featured_image" class="form-label">Featured Image URL</label>
-                                <input type="url" class="form-control" id="featured_image" name="featured_image" value="<?php echo htmlspecialchars($property['featured_image']); ?>">
-                                <div class="form-text">Enter a valid URL for the property image. Leave empty to use a placeholder.</div>
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control" id="description" name="description" rows="4"><?php echo htmlspecialchars($property['description']); ?></textarea>
                             </div>
+                            
+                            <div class="form-group">
+                                <label for="address" class="form-label">Address</label>
+                                <input type="text" class="form-control" id="address" name="address" value="<?php echo htmlspecialchars($property['address']); ?>" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="state" class="form-label">State</label>
+                                <input type="text" class="form-control" id="state" name="state" value="<?php echo htmlspecialchars($property['state']); ?>" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="zip_code" class="form-label">Zip Code</label>
+                                <input type="text" class="form-control" id="zip_code" name="zip_code" value="<?php echo htmlspecialchars($property['zip_code']); ?>" required>
+                            </div>
+                        </div>
+                        
+                        <!-- Featured Image Section -->
+                        <div class="form-group full-width">
+                            <label class="form-label">Featured Image</label>
+                            <?php if (!empty($property['featured_image'])): ?>
+                                <div class="mb-3">
+                                    <img src="<?php echo htmlspecialchars($property['featured_image']); ?>" alt="Featured Image" style="max-width: 200px; max-height: 150px; object-fit: cover; border-radius: var(--border-radius);">
+                                </div>
+                            <?php endif; ?>
+                            <input type="file" class="form-control" id="featured_image" name="featured_image" accept="image/jpeg,image/png,image/gif">
+                            <div class="form-text">Upload a new image to replace the current one. Maximum file size: 5MB. Supported formats: JPG, JPEG, PNG, GIF.</div>
+                        </div>
+                        
+                        <!-- Property Images Section -->
+                        <div class="form-group full-width">
+                            <label class="form-label">Property Images</label>
+                            
+                            <!-- Existing Images Gallery -->
+                            <?php if (!empty($property_images)): ?>
+                                <div class="image-gallery">
+                                    <?php foreach ($property_images as $img): ?>
+                                        <div class="image-item">
+                                            <img src="<?php echo htmlspecialchars($img['image_path']); ?>" alt="Property Image">
+                                            <div class="image-actions">
+                                                <label class="image-action" title="Delete Image">
+                                                    <input type="checkbox" name="delete_image[]" value="<?php echo $img['id']; ?>" style="display: none;">
+                                                    <i class="fas fa-trash"></i>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="form-text mb-3">Check the trash icon to mark images for deletion.</div>
+                            <?php else: ?>
+                                <p class="text-muted mb-3">No additional images for this property.</p>
+                            <?php endif; ?>
+                            
+                            <!-- Upload New Images -->
+                            <div class="image-upload-container" id="imageUploadContainer">
+                                <div class="image-upload-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <div class="image-upload-text">
+                                    <p>Drag & drop images here or click to browse</p>
+                                    <p class="form-text">Maximum 10 images. 5MB per image. Supported formats: JPG, JPEG, PNG, GIF</p>
+                                </div>
+                                <input type="file" id="property_images" name="property_images[]" multiple accept="image/jpeg,image/png,image/gif" style="display: none;">
+                            </div>
+                            
+                            <!-- Image Preview Container -->
+                            <div class="image-preview-container" id="imagePreviewContainer"></div>
                         </div>
                     </div>
                     <div class="form-footer">
@@ -718,14 +1100,133 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             const statusSelect = document.getElementById('status');
             document.getElementById('previewStatus').textContent = statusSelect.options[statusSelect.selectedIndex].text;
+        }
+        
+        // Image upload functionality
+        const imageUploadContainer = document.getElementById('imageUploadContainer');
+        const propertyImagesInput = document.getElementById('property_images');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        
+        imageUploadContainer.addEventListener('click', function() {
+            propertyImagesInput.click();
+        });
+        
+        imageUploadContainer.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.style.borderColor = 'var(--agent-primary)';
+            this.style.backgroundColor = 'var(--gray-100)';
+        });
+        
+        imageUploadContainer.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.style.borderColor = 'var(--gray-300)';
+            this.style.backgroundColor = '';
+        });
+        
+        imageUploadContainer.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.style.borderColor = 'var(--gray-300)';
+            this.style.backgroundColor = '';
             
-            const imageUrl = document.getElementById('featured_image').value;
-            if (imageUrl) {
-                document.getElementById('previewImage').src = imageUrl;
-            } else {
-                document.getElementById('previewImage').src = '/placeholder.svg?height=250&width=400';
+            if (e.dataTransfer.files.length > 0) {
+                propertyImagesInput.files = e.dataTransfer.files;
+                handleImagePreview();
+            }
+        });
+        
+        propertyImagesInput.addEventListener('change', handleImagePreview);
+        
+        function handleImagePreview() {
+            imagePreviewContainer.innerHTML = '';
+            
+            if (propertyImagesInput.files.length > 10) {
+                alert('You can only upload up to 10 images at once.');
+                propertyImagesInput.value = '';
+                return;
+            }
+            
+            for (let i = 0; i < propertyImagesInput.files.length; i++) {
+                const file = propertyImagesInput.files[i];
+                
+                // Validate file size
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`File "${file.name}" exceeds the 5MB size limit.`);
+                    continue;
+                }
+                
+                // Validate file type
+                const fileType = file.type.toLowerCase();
+                if (fileType !== 'image/jpeg' && fileType !== 'image/jpg' && fileType !== 'image/png' && fileType !== 'image/gif') {
+                    alert(`File "${file.name}" is not a supported image format.`);
+                    continue;
+                }
+                
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'image-preview-item';
+                    
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.alt = 'Image Preview';
+                    
+                    const removeBtn = document.createElement('div');
+                    removeBtn.className = 'image-preview-remove';
+                    removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    removeBtn.dataset.index = i;
+                    
+                    removeBtn.addEventListener('click', function() {
+                        previewItem.remove();
+                        
+                        // Create a new FileList without the removed file
+                        const dt = new DataTransfer();
+                        const files = propertyImagesInput.files;
+                        
+                        for (let j = 0; j < files.length; j++) {
+                            if (j !== parseInt(this.dataset.index)) {
+                                dt.items.add(files[j]);
+                            }
+                        }
+                        
+                        propertyImagesInput.files = dt.files;
+                    });
+                    
+                    previewItem.appendChild(img);
+                    previewItem.appendChild(removeBtn);
+                    imagePreviewContainer.appendChild(previewItem);
+                };
+                
+                reader.readAsDataURL(file);
             }
         }
+        
+        // Handle image deletion checkboxes
+        const deleteCheckboxes = document.querySelectorAll('input[name="delete_image[]"]');
+        deleteCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const imageItem = this.closest('.image-item');
+                if (this.checked) {
+                    imageItem.style.opacity = '0.5';
+                } else {
+                    imageItem.style.opacity = '1';
+                }
+            });
+        });
+        
+        // Preview featured image when selected
+        const featuredImageInput = document.getElementById('featured_image');
+        featuredImageInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    document.getElementById('previewImage').src = e.target.result;
+                };
+                
+                reader.readAsDataURL(this.files[0]);
+            }
+        });
     </script>
 </body>
 </html>

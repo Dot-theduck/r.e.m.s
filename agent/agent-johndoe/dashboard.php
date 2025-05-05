@@ -63,7 +63,8 @@ $lease_stmt->execute();
 $lease_result = $lease_stmt->get_result();
 
 // Maintenance Requests
-$maintenance_sql = "SELECT maintenance_requests.title, maintenance_requests.status, properties.title as property_title
+$maintenance_sql = "SELECT maintenance_requests.id, maintenance_requests.title, maintenance_requests.status, 
+                    maintenance_requests.created_at, properties.title as property_title
                     FROM maintenance_requests
                     INNER JOIN properties ON maintenance_requests.property_id = properties.id
                     WHERE properties.landlord_id = ?
@@ -891,7 +892,7 @@ $occupancy_rate = $total_properties > 0 ? ($occupied_properties / $total_propert
                         <a href="maintenance.php" class="btn btn-outline btn-sm">View All</a>
                     </div>
                     <div>
-                        <?php if ($maintenance_result && $maintenance_result->num_rows > 0): ?>
+                        <?php if ($maintenance_stmt && $maintenance_result && $maintenance_result->num_rows > 0): ?>
                             <?php while ($request = $maintenance_result->fetch_assoc()): ?>
                                 <div class="list-item">
                                     <div class="list-item-content">

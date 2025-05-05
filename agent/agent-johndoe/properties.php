@@ -483,7 +483,7 @@ if (!$result) {
                                         <?php echo htmlspecialchars($property['city']); ?>
                                     </div>
                                 </div>
-                                <div class="property-price">$<?php echo number_format($property['monthly_rent'], 2); ?>/month</div>
+<div class="property-price">Ksh <?php echo number_format($property['monthly_rent'], 2); ?>/month</div>
                                 <div class="property-actions">
                                     <a href="edit_property.php?id=<?php echo $property['id']; ?>" class="btn btn-outline btn-sm">
                                         <i class="fas fa-edit"></i> Edit

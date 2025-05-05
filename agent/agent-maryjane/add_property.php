@@ -537,37 +537,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
             <nav class="sidebar-nav">
                 <div class="sidebar-nav-item">
-                    <a href="dashboard.html" class="sidebar-nav-link">
+                    <a href="dashboard.php" class="sidebar-nav-link active">
                         <i class="fas fa-home sidebar-nav-icon"></i>
                         Dashboard
                     </a>
                 </div>
                 <div class="sidebar-nav-item">
-                    <a href="properties.html" class="sidebar-nav-link active">
+                    <a href="properties.php" class="sidebar-nav-link">
                         <i class="fas fa-building sidebar-nav-icon"></i>
                         Properties
                     </a>
                 </div>
                 <div class="sidebar-nav-item">
-                    <a href="users.html" class="sidebar-nav-link">
-                        <i class="fas fa-users sidebar-nav-icon"></i>
-                        Users
+                    <a href="payment_report.php" class="sidebar-nav-link">
+                        <i class="fas fa-money-bill-wave sidebar-nav-icon"></i>
+                        Payments
                     </a>
                 </div>
                 <div class="sidebar-nav-item">
-                    <a href="reports.html" class="sidebar-nav-link">
+                    <a href="users.php" class="sidebar-nav-link">
+                        <i class="fas fa-users sidebar-nav-icon"></i>
+                        Tenants
+                    </a>
+                </div>
+                <div class="sidebar-nav-item">
+                    <a href="maintenance.php" class="sidebar-nav-link">
+                        <i class="fas fa-tools sidebar-nav-icon"></i>
+                        Maintenance
+                    </a>
+                </div>
+                <div class="sidebar-nav-item">
+                    <a href="report.php" class="sidebar-nav-link">
                         <i class="fas fa-chart-bar sidebar-nav-icon"></i>
                         Reports
                     </a>
                 </div>
+
                 <div class="sidebar-nav-item">
-                    <a href="settings.html" class="sidebar-nav-link">
-                        <i class="fas fa-cog sidebar-nav-icon"></i>
-                        Settings
-                    </a>
-                </div>
-                <div class="sidebar-nav-item">
-                    <a href="logout.php" class="sidebar-nav-link">
+                    <a href="../../index.php" class="sidebar-nav-link">
                         <i class="fas fa-sign-out-alt sidebar-nav-icon"></i>
                         Logout
                     </a>
